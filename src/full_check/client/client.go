@@ -1,19 +1,20 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"strconv"
 	"strings"
 	"time"
-	"errors"
 
 	"full_check/common"
 
-	"github.com/gomodule/redigo/redis"
-	redigoCluster "github.com/najoast/redis-go-cluster"
 	"reflect"
+
+	redigoCluster "github.com/lzztt/redis-go-cluster"
+	"github.com/gomodule/redigo/redis"
 )
 
 var (
@@ -92,10 +93,15 @@ func (p *RedisClient) Connect() error {
 	if p.redisHost.IsCluster() == false {
 		// single db or proxy
 		if p.redisHost.TimeoutMs == 0 {
-			p.conn, err = redis.Dial("tcp", p.redisHost.Addr[0])
+			p.conn, err = redis.Dial("tcp", p.redisHost.Addr[0], redis.DialUseTLS(true))
 		} else {
-			p.conn, err = redis.DialTimeout("tcp", p.redisHost.Addr[0], time.Millisecond*time.Duration(p.redisHost.TimeoutMs),
-				time.Millisecond*time.Duration(p.redisHost.TimeoutMs), time.Millisecond*time.Duration(p.redisHost.TimeoutMs))
+			timeout := time.Millisecond * time.Duration(p.redisHost.TimeoutMs)
+			p.conn, err = redis.Dial("tcp", p.redisHost.Addr[0],
+				redis.DialConnectTimeout(timeout),
+				redis.DialReadTimeout(timeout),
+				redis.DialWriteTimeout(timeout),
+				redis.DialUseTLS(true),
+			)
 		}
 	} else {
 		// cluster
@@ -108,6 +114,7 @@ func (p *RedisClient) Connect() error {
 				KeepAlive:    16,
 				AliveTime:    60 * time.Second,
 				Password:     p.redisHost.Password,
+				UseTLS:       true,
 			})
 		if err == nil {
 			p.conn = common.NewClusterConn(cluster, 0)
@@ -179,7 +186,7 @@ type combine struct {
 }
 
 func (c combine) String() string {
-	all := make([]string, 0, len(c.params) + 1)
+	all := make([]string, 0, len(c.params)+1)
 	all = append(all, c.command)
 	for _, ele := range c.params {
 		all = append(all, string(ele.([]byte)))
